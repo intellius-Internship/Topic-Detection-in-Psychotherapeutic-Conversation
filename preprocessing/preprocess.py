@@ -1,93 +1,148 @@
 import re
-import argparse
 import random
 import pandas as pd
 import numpy as np
 import warnings
-from functools import reduce
 from os.path import join as pjoin
 warnings.filterwarnings(action='ignore')
 
 repeatchars_pattern = re.compile('(\D)\\1{2,}')
-doublespace_pattern = re.compile('\s+')
 
+'''
+Description
+-----------
+전처리에 필요한 파라미터 지정
+
+    args.balanced: True일 때 get_balanced_dataset를 통한 분할,\
+         False일 때 분할 비율에 따라 랜덤하게 분할
+
+    args.test_ratio: 테스트 데이터 비율
+    args.seed: random seed 고정 (19로 고정)
+'''
 def base_setting(args):
-    args.shuffle = getattr(args, 'shuffle', False)
+    args.balanced = getattr(args, 'balanced', True)
+    args.use_valid = getattr(args, 'use_valid', True)
     args.seed = getattr(args, 'seed', 19)
-    args.valid_ratio = getattr(args, 'valid_ratio', 0.2)
+    args.test_ratio = getattr(args, 'test_ratio', 0.2)
 
-def repeat_normalize(sent, num_repeats=2):
-    if num_repeats > 0:
-        sent = repeatchars_pattern.sub('\\1' * num_repeats, sent)
-    sent = doublespace_pattern.sub(' ', sent)
-    return sent.strip()
+'''
+Description
+-----------
+전처리 함수
 
+    def del_newline(text : str)
+        개행/탭 문자 공백 문자로 변경
+    def del_special_char(text : str)
+        느낌표, 물음표, 쉼표, 온점을 제외한 특수문자 삭제
+    def repeat_normalize(text : str, num_repeats : int)
+        반복 문자 개수 num_repeats으로 제한
+    def del_duplicated_space(text : str)
+        중복 공백 삭제
+'''
 def del_newline(text : str):
     return re.sub('[\s\n\t]+', ' ', text)
 
 def del_special_char(text : str):
     return re.sub('[^가-힣ㄱ-ㅎㅏ-ㅣ,.?!~0-9a-zA-Z\s]+', '', text)
 
+def repeat_normalize(sent, num_repeats=2):
+    if num_repeats > 0:
+        sent = repeatchars_pattern.sub('\\1' * num_repeats, sent)
+    return sent.strip()
+
+def del_duplicated_space(text : str):
+    return re.sub('[\s]+', ' ', text)
+
 def preprocess(text : str):
     proc_txt = del_newline(text)
     proc_txt = del_special_char(proc_txt)
     proc_txt = repeat_normalize(proc_txt, num_repeats=3)
-
+    proc_txt = del_duplicated_space(proc_txt)
     return proc_txt.strip()
-
-def is_valid(proc_text : str, threshold=2) -> bool:
-    return len(re.sub('[^가-힣ㄱ-ㅎㅏ-ㅣ]', '', proc_text)) > threshold
-
 
 def processing(args, data):
     base_setting(args)
+
+    # seed 고정
     random.seed(args.seed)
     np.random.seed(args.seed)
 
-    print(f'Original Length of Data : {len(data)}')
+    # labeling
+    labels = data.label_str.unique().tolist()
+    data['label'] = list(map(lambda x: labels.index(x), data['label_str']))
 
+    # text processing
     data['proc_query'] = list(map(preprocess, data['query']))
-    data.to_csv(pjoin(args.data_dir, 'data.csv'), index=False)
+    data.to_csv(pjoin(args.data_dir, 'proc_data.csv'), index=False)
     return data
 
+
+'''
+Description
+-----------
+테스트 시, 되도록 모든 클래스에 대한 정답률 파악을 위해 \
+    5개 미만의 데이터를 보유한 클래스의 경우 임의로 할당
+
+train, valid, test의 클래스 분포를 기존 data의 클래스 분포와 동일하게 유지  
+'''
+def get_balanced_dataset(data : pd.DataFrame, test_ratio : float, use_valid : bool):
+    
+    valid = train = test = pd.DataFrame()
+
+    for idx in data.label.unique().tolist():
+        sub_data = data[data.label==idx]
+        num_valid = num_test = int(len(sub_data) * test_ratio)
+
+        if num_test == 0:
+            if len(sub_data) < 2:
+                train = pd.concat([train, sub_data], ignore_index=True)
+                continue
+            elif len(sub_data) < 3:
+                test = pd.concat([test, sub_data.iloc[:1]], ignore_index=True)
+                train = pd.concat([train, sub_data.iloc[1:]], ignore_index=True)
+                continue
+            else: 
+                # class 내 데이터가 3-4개 인 경우
+                num_valid = num_test = int(len(sub_data)/ 3)
+
+        test_idx = 2 * num_test if use_valid else num_test
+        valid_idx = num_valid if use_valid else 0
+
+        valid = pd.concat([valid, sub_data.iloc[:valid_idx]], ignore_index=True)
+        test = pd.concat([test, sub_data.iloc[valid_idx:test_idx]], ignore_index=True)
+        train = pd.concat([train, sub_data.iloc[test_idx:]], ignore_index=True)
+
+        del sub_data
+    return train, test, valid
+
+
+'''
+Description
+-----------
+전체 데이터를 train, valid, test로 분할하여 args.result_dir 내에 저장
+'''
 def split_dataset(args, data):
-    if not args.shuffle:
-        valid = pd.DataFrame()
-        train = pd.DataFrame()
-        test = pd.DataFrame()
-
-        for idx in data.label.unique().tolist():
-            sub_data = data[data.label==idx]
-            num_valid = int(len(sub_data) * args.valid_ratio)
-
-            if num_valid == 0:
-                if len(sub_data) < 2:
-                    train = pd.concat([train, sub_data], ignore_index=True)
-                elif len(sub_data) < 3:
-                    test = pd.concat([test, sub_data.iloc[:1]], ignore_index=True)
-                    train = pd.concat([train, sub_data.iloc[1:]], ignore_index=True)
-            else:
-                valid = pd.concat([valid, sub_data.iloc[:num_valid]], ignore_index=True)
-                test = pd.concat([test, sub_data.iloc[num_valid:2 * num_valid]], ignore_index=True)
-                train = pd.concat([train, sub_data.iloc[2 * num_valid:]], ignore_index=True)
-
-            del sub_data
-
-        valid = valid.sample(frac=1, random_state=args.seed)
-        test = test.sample(frac=1, random_state=args.seed)
-        train = train.sample(frac=1, random_state=args.seed)
+    if args.balanced:
+        train, test, valid = get_balanced_dataset(data=data, test_ratio=args.test_ratio, \
+            use_valid=args.use_valid)
     else:
         data = data.sample(frac=1, random_state=args.seed)
-        valid = data.iloc[:int(len(data) * args.valid_ratio)]
-        test = data.iloc[int(len(data) * args.valid_ratio):2 * int(len(data) * args.valid_ratio)]
-        train = data.iloc[2 * int(len(data) * args.valid_ratio):]
+        num_test = int(len(data) * args.test_ratio)
 
-        print(f"Train Distribution : \n{train.label.value_counts()}")
-        print(f"Valid Distribution : \n{valid.label.value_counts()}")
-        print(f"Test Distribution : \n{test.label.value_counts()}")
+        test_idx = 2 * num_test if args.use_valid else num_test
+        valid_idx = num_test if args.use_valid else 0
 
-    valid.to_csv(pjoin(args.data_dir, 'valid.csv'), index=False)
-    test.to_csv(pjoin(args.data_dir, 'test.csv'), index=False)
-    train.to_csv(pjoin(args.data_dir, 'train.csv'), index=False)
+        valid = data.iloc[:valid_idx]
+        test = data.iloc[valid_idx:test_idx]
+        train = data.iloc[test_idx:]
+
+    print(f"Train Distribution : \n{train.label_str.value_counts()}")
+    print(f"Valid Distribution : \n{valid.label_str.value_counts()}")
+    print(f"Test Distribution : \n{test.label_str.value_counts()}")
+
+    valid.to_csv(pjoin(args.result_dir, 'valid.csv'), index=False)
+    test.to_csv(pjoin(args.result_dir, 'test.csv'), index=False)
+    train.to_csv(pjoin(args.result_dir, 'train.csv'), index=False)
 
     print(f"Total Number of Data : {len(data)} -> {len(valid) + len(test) + len(train)}")
+    return

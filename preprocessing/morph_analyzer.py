@@ -3,13 +3,18 @@ import pandas as pd
 from typing import List
 from konlpy.tag import Okt 
 from konlpy.tag import Mecab
+from tqdm.auto import tqdm
 
 mecab = Mecab()
 okt = Okt()
 
-TOKENIZER = 'mecab'
-SEED = 19
 
+'''
+Description
+-----------
+어말 어미와 동사/형용사와 어말 어미를 연결 
+또는 복합 명사 연결
+'''
 def concat_pos(pos_list : List[tuple], concat_pos_list : List[tuple]) -> List[tuple]:
     if not pos_list:
         return concat_pos_list
@@ -26,18 +31,28 @@ def concat_pos(pos_list : List[tuple], concat_pos_list : List[tuple]) -> List[tu
     
     return concat_pos(pos_list[1:], concat_pos_list + [pos_list[0]])
 
+'''
+Description
+-----------
+Mecab tokenizer를 이용한 형태소 분석
+'''
 def analyze_syntactics_with_mecab(sent : str, split_morphs : bool) -> tuple:
     pos_list = mecab.pos(sent)
 
     pos_list = concat_pos(pos_list, [])
     noun_list = [pos for pos, tag in pos_list if tag.startswith(('NNG', 'NNP', 'XR'))]
-    
     verb_list = [pos for pos, tag in pos_list if tag.startswith(('XSV', 'VV', 'VA', 'VC'))]
 
     if not split_morphs:
         return [pos for pos, tag in pos_list if tag.startswith(('NNG', 'NNP', 'XR', 'XSV', 'VV', 'VA', 'VC'))]
     return noun_list, verb_list
 
+
+'''
+Description
+-----------
+Okt tokenizer를 이용한 형태소 분석
+'''
 def analyze_syntactics_with_okt(sent : str, split_morphs : bool) -> tuple:
     pos_list = okt.pos(sent)
 
@@ -55,6 +70,14 @@ def analyze_syntactics(sent : str, split_morphs=True, tokenizer='mecab') -> tupl
     if tokenizer == 'okt':
         return analyze_syntactics_with_okt(sent, split_morphs)
 
-def get_morphs(data : pd.DataFrame):
-    data['query_pos'] = data['query'].apply(lambda x: ' '.join(analyze_syntactics(x, split_morphs=False)))
+'''
+Description
+-----------
+사용자 발화에 대한 형태소 분석 수행 
+명사, 형용사, 동사를 제외한 품사 제거
+'''
+def get_morphs(data : pd.DataFrame, tokenizer : str):
+    tqdm.pandas(desc="split_morphs")
+    data['query_pos'] = data['query'].progress_apply(lambda x: ' '.join(analyze_syntactics(x, \
+        split_morphs=False, tokenizer=tokenizer)))
     return data

@@ -1,7 +1,7 @@
 import torch
 import pytorch_lightning as pl
 
-from utils import load_model, Logger
+from utils import load_model
 
 from dataloader import PlmData
 from lightning_model import LightningModel
@@ -10,9 +10,20 @@ from torch.utils.data import DataLoader
 from transformers.optimization import AdamW, get_cosine_schedule_with_warmup
 from transformers import AdamW, get_linear_schedule_with_warmup
 
+'''
+Description
+-----------
+Topic Detection with Transformer Models
 
-logger = Logger('model-log', 'log/')
+Models
+------
+huggingface에 공개된 한국어 사전학습 모델 사용
 
+    BERT: monologg/kobert
+    ELECTRA: monologg/koelectra-base-v3-discriminator
+    BigBird: monologg/kobigbird-bert-base (현재 비공개 처리됨)
+    RoBERTa: klue/roberta-base     
+'''
 class LightningPLM(LightningModel):
     def __init__(self, hparams):
         super(LightningPLM, self).__init__(hparams)
@@ -34,7 +45,6 @@ class LightningPLM(LightningModel):
         input_ids, attention_mask, label = batch
         logits = self(input_ids=input_ids, attention_mask=attention_mask)
         loss = self.loss_function(logits.view(-1, self.hparams.num_labels), label.view(-1))
-        # self.log('train_loss', loss, prog_bar=True)
 
         probs = self.softmax(logits)
         self.log_dict({
@@ -48,7 +58,6 @@ class LightningPLM(LightningModel):
         input_ids, attention_mask, label = batch
         logits = self(input_ids=input_ids, attention_mask=attention_mask)
         loss = self.loss_function(logits.view(-1, self.hparams.num_labels), label.view(-1))
-        # self.log('val_loss', loss, prog_bar=True, on_step=False, on_epoch=True)
 
         acc = self.accuracy(self.softmax(logits), label)
         self.log_dict({
@@ -69,7 +78,6 @@ class LightningPLM(LightningModel):
             'avg_val_loss' : torch.stack(avg_losses).mean(),
             'avg_val_acc' : torch.stack(avg_accuracies).mean()
         })
-        # self.log('avg_val_loss', torch.stack(avg_losses).mean())
     
     def configure_optimizers(self):
         # Prepare optimizer
@@ -104,8 +112,7 @@ class LightningPLM(LightningModel):
 
     def train_dataloader(self):
         data_path = f'{self.hparams.data_dir}/train.csv'
-        self.train_set = PlmData(data_path, tokenizer=self.tokenizer, max_len=self.hparams.max_len, \
-             query=self.hparams.query)
+        self.train_set = PlmData(data_path, tokenizer=self.tokenizer, max_len=self.hparams.max_len)
         train_dataloader = DataLoader(
             self.train_set, batch_size=self.hparams.batch_size, num_workers=2,
             shuffle=False, collate_fn=self._collate_fn)
@@ -113,8 +120,7 @@ class LightningPLM(LightningModel):
     
     def val_dataloader(self):
         data_path = f'{self.hparams.data_dir}/valid.csv'
-        self.valid_set = PlmData(data_path, tokenizer=self.tokenizer, max_len=self.hparams.max_len, \
-            query=self.hparams.query)
+        self.valid_set = PlmData(data_path, tokenizer=self.tokenizer, max_len=self.hparams.max_len)
         val_dataloader = DataLoader(
             self.valid_set, batch_size=self.hparams.batch_size, num_workers=2,
             shuffle=False, collate_fn=self._collate_fn)

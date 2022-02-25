@@ -3,7 +3,6 @@ import torch
 import argparse
 import logging
 import warnings
-
 import numpy as np
 import transformers
 import pytorch_lightning as pl
@@ -18,7 +17,6 @@ from lightning_model import LightningModel
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import ModelCheckpoint
 
-
 warnings.filterwarnings(action='ignore')
 transformers.logging.set_verbosity_error()
 
@@ -27,6 +25,11 @@ logger.setLevel(logging.INFO)
 
 SEED = 19
 
+'''
+Description
+-----------
+시드 고정
+'''
 def set_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
@@ -38,11 +41,16 @@ def set_seed(seed):
 
 if __name__ == "__main__":
     
-    parser = argparse.ArgumentParser(description='Emotion Recognition based on BERT')
+    parser = argparse.ArgumentParser(description='Topic Detection in Psychotherapeutic Conversation')
     parser.add_argument('--train',
                         action='store_true',
                         default=False,
                         help='for training')
+
+    parser.add_argument('--user_input',
+                        action='store_true',
+                        default=False,
+                        help='if True, test on user inputs')
 
     parser.add_argument('--data_dir',
                         type=str,
@@ -54,19 +62,16 @@ if __name__ == "__main__":
 
     parser.add_argument('--model_name',
                         type=str,
-                        default='baseline')
+                        default='roberta+method')
 
     parser.add_argument('--model_type',
                         type=str,
-                        required=True)
-
-    parser.add_argument('--query',
-                        type=str,
-                        default='query')
+                        required=True,
+                        choices=['gpt2', 'bart', 'bert', 'electra', 'bigbird', 'roberta'])
                         
     parser.add_argument('--num_labels',
                         type=int,
-                        default=19)
+                        default=20)
 
     parser.add_argument('--max_len',
                         type=int,
@@ -74,7 +79,7 @@ if __name__ == "__main__":
 
     parser.add_argument('--model_pt',
                         type=str,
-                        default='baseline-last.ckpt')
+                        default=None)
 
     parser.add_argument("--gpuid", nargs='+', type=int, default=0)
 
@@ -83,11 +88,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     logging.info(args)
 
+    # random seed 고정
     set_seed(SEED)
-
-    global DATA_DIR
-    DATA_DIR = args.data_dir
     
+    # finetuning pretrained language model
     if args.train:
         if args.model_type == 'gpt2':
             checkpoint_callback = ModelCheckpoint(
@@ -132,5 +136,6 @@ if __name__ == "__main__":
         logging.info('best model path {}'.format(checkpoint_callback.best_model_path))
 
     else:
+        # testing finetuned language model
         with torch.cuda.device(args.gpuid[0]):
             evaluation(args)

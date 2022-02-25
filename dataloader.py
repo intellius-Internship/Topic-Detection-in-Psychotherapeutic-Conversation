@@ -2,7 +2,6 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from ast import literal_eval
 from torch.utils.data import Dataset
 from utils.model_util import U_TKN, S_TKN
 
@@ -11,21 +10,23 @@ warnings.filterwarnings(action='ignore')
 DELIMITER = '<unused1>'
 
 class PlmData(Dataset):
-    def __init__(self, data_path, tokenizer, max_len, query):
+    """Dataloader for Topic-Detection Model based on Transformer"""
+    def __init__(self, data_path, tokenizer, max_len):
         self._data = pd.read_csv(data_path, encoding='utf-8')
         self.max_len = max_len
         self.tokenizer = tokenizer
-        self.query = query
 
     def __len__(self):
         return len(self._data)
 
     def _tokenize(self, text):
-        tokens = self.tokenizer.tokenize(self.tokenizer.cls_token + str(text) + self.tokenizer.sep_token)
+        tokens = self.tokenizer.tokenize(self.tokenizer.cls_token + \
+            str(text) + self.tokenizer.sep_token)
         ids = self.tokenizer.convert_tokens_to_ids(tokens)
         return ids, len(ids)
 
     def _padding(self, ids):
+        # padding with 'pad_token_id' of tokenizer
         while len(ids) < self.max_len:
             ids += [self.tokenizer.pad_token_id]
 
@@ -36,7 +37,7 @@ class PlmData(Dataset):
     def __getitem__(self, idx):
         turn = self._data.iloc[idx]
         
-        query = turn[self.query] 
+        query = turn['proc_query'] 
         label = int(turn['label'])
 
         token_ids, _ = self._tokenize(query)
@@ -47,7 +48,8 @@ class PlmData(Dataset):
 
 
 class AutoRegressionChatData(Dataset):
-    def __init__(self, data_path, tokenizer, max_len, query):
+    """Dataloader for Topic-Detection Model based on GPT2"""
+    def __init__(self, data_path, tokenizer, max_len):
         self._data = pd.read_csv(data_path, sep=',')
         self._data = self._data.dropna(axis=0)
         
@@ -56,8 +58,6 @@ class AutoRegressionChatData(Dataset):
 
         self.max_len = max_len
         self.tokenizer = tokenizer
-
-        self.query = query
 
     def __len__(self):
         return len(self._data)
@@ -86,15 +86,16 @@ class AutoRegressionChatData(Dataset):
         
     def _padding(self, tokens):
         ids = self.tokenizer.convert_tokens_to_ids(tokens)
+
+        # padding with 'pad_token_id' of tokenizer
         while len(ids) < self.max_len:
             ids += [self.tokenizer.pad_token_id]
-        
         return ids
 
     def __getitem__(self, idx):
         turn = self._data.iloc[idx]
         
-        query = turn[self.query]
+        query = turn['proc_query']
         label = turn['label_str']
 
         query_toked, label_toked, query_len, label_len = self._tokenize_turn(query, label)
@@ -110,14 +111,13 @@ class AutoRegressionChatData(Dataset):
         return(token_ids, np.array(mask), labels_ids)
 
 class Seq2SeqChatData(Dataset):
-    def __init__(self, data_path, tokenizer, max_len, query) -> None:
+    """Dataloader for Topic-Detection Model based on BART"""
+    def __init__(self, data_path, tokenizer, max_len) -> None:
         self._data = pd.read_csv(data_path, sep=',')
         self._data = self._data.dropna(axis=0)
 
         self.max_len = max_len
         self.tokenizer = tokenizer
-
-        self.query = query
 
     def __len__(self):
         return len(self._data)
@@ -125,6 +125,8 @@ class Seq2SeqChatData(Dataset):
     def make_input_id_mask(self, tokens, index):
         input_id = self.tokenizer.convert_tokens_to_ids(tokens)
         attention_mask = [1] * len(input_id)
+
+        # padding with zeros
         if len(input_id) < self.max_len:
             while len(input_id) < self.max_len:
                 input_id += [self.tokenizer.pad_token_id]
@@ -138,7 +140,7 @@ class Seq2SeqChatData(Dataset):
     def __getitem__(self, index):
         turn = self._data.iloc[index]
         
-        query = turn[self.query]
+        query = turn['proc_query']
         label = turn['label_str']
         
         query_toked = [self.tokenizer.bos_token] + \
@@ -153,6 +155,7 @@ class Seq2SeqChatData(Dataset):
         labels = self.tokenizer.convert_tokens_to_ids(
             label_toked[1:(self.max_len + 1)])
 
+        # padding with negative values
         if len(labels) < self.max_len:
             while len(labels) < self.max_len:
                 labels += [-100]

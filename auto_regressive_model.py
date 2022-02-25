@@ -7,6 +7,14 @@ from lightning_model import LightningModel
 from utils.model_util import load_model
 from dataloader import AutoRegressionChatData
 
+'''
+Description
+-----------
+Topic Detection with KoGPT2
+
+huggingface에 공개된 한국어 사전학습 모델 KoGPT2 \
+    skt/kogpt2-base-v2 사용
+'''
 class AutoRegressiveModel(LightningModel):
     def __init__(self, hparams):
         super(AutoRegressiveModel, self).__init__(hparams)
@@ -18,13 +26,14 @@ class AutoRegressiveModel(LightningModel):
         self.loss_function = torch.nn.CrossEntropyLoss(reduction='none')
 
     def forward(self, inputs):
-        # (batch, seq_len, hiddens)
         output = self.model(inputs, return_dict=True)
         return output.logits
 
     def training_step(self, batch, batch_idx):
         token_ids, mask, label = batch
         out = self(token_ids)
+
+        # assign negative logits 
         mask_3d = mask.unsqueeze(dim=2).repeat_interleave(repeats=out.shape[2], dim=2)
         mask_out = torch.where(mask_3d == 1, out, self.neg * torch.ones_like(out))
         loss = self.loss_function(mask_out.transpose(2, 1), label)
@@ -32,22 +41,24 @@ class AutoRegressiveModel(LightningModel):
         self.log('train_loss', loss_avg)
         return loss_avg
 
-    # def validation_step(self, batch, batch_idx):
-    #     token_ids, mask, label = batch
-    #     out = self(token_ids)
-    #     mask_3d = mask.unsqueeze(dim=2).repeat_interleave(repeats=out.shape[2], dim=2)
-    #     mask_out = torch.where(mask_3d == 1, out, self.neg * torch.ones_like(out))
-    #     loss = self.loss_function(mask_out.transpose(2, 1), label)
-    #     loss_avg = loss.sum() / mask.sum()
+    def validation_step(self, batch, batch_idx):
+        token_ids, mask, label = batch
+        out = self(token_ids)
 
-    #     self.log('val_loss', loss_avg, prog_bar=True, on_step=False, on_epoch=True)
-    #     return loss_avg
+        # assign negative logits 
+        mask_3d = mask.unsqueeze(dim=2).repeat_interleave(repeats=out.shape[2], dim=2)
+        mask_out = torch.where(mask_3d == 1, out, self.neg * torch.ones_like(out))
+        loss = self.loss_function(mask_out.transpose(2, 1), label)
+        loss_avg = loss.sum() / mask.sum()
 
-    # def validation_epoch_end(self, outputs):
-    #     avg_losses = []
-    #     for loss_avg in outputs:
-    #         avg_losses.append(loss_avg)
-    #     self.log('avg_val_loss', torch.stack(avg_losses).mean(), prog_bar=True)
+        self.log('val_loss', loss_avg, prog_bar=True, on_step=False, on_epoch=True)
+        return loss_avg
+
+    def validation_epoch_end(self, outputs):
+        avg_losses = []
+        for loss_avg in outputs:
+            avg_losses.append(loss_avg)
+        self.log('avg_val_loss', torch.stack(avg_losses).mean(), prog_bar=True)
     
     def configure_optimizers(self):
         # Prepare optimizer
@@ -81,14 +92,14 @@ class AutoRegressiveModel(LightningModel):
         self.train_set = AutoRegressionChatData(data_path, max_len=self.hparams.max_len, tokenizer=self.tokenizer)
         train_dataloader = DataLoader(
             self.train_set, batch_size=self.hparams.batch_size, num_workers=2,
-            shuffle=True, collate_fn=self._collate_fn)
+            shuffle=False, collate_fn=self._collate_fn)
         return train_dataloader
     
-    # def val_dataloader(self):
-    #     data_path = f'{self.hparams.data_dir}/valid.csv'
-    #     self.valid_set = AutoRegressionChatData(data_path, max_len=self.hparams.max_len, tokenizer=self.tokenizer)
-    #     val_dataloader = DataLoader(
-    #         self.valid_set, batch_size=self.hparams.batch_size, num_workers=2,
-    #         shuffle=True, collate_fn=self._collate_fn)
-    #     return val_dataloader
+    def val_dataloader(self):
+        data_path = f'{self.hparams.data_dir}/valid.csv'
+        self.valid_set = AutoRegressionChatData(data_path, max_len=self.hparams.max_len, tokenizer=self.tokenizer)
+        val_dataloader = DataLoader(
+            self.valid_set, batch_size=self.hparams.batch_size, num_workers=2,
+            shuffle=False, collate_fn=self._collate_fn)
+        return val_dataloader
 

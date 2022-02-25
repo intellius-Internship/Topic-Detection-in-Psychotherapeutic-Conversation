@@ -3,6 +3,7 @@ import argparse
 from pytorch_lightning.core.lightning import LightningModule
 
 class LightningModel(LightningModule):
+    """Super class for Topic-Detection Model based on BART and GPT2"""
     def __init__(self, hparams):
         super(LightningModel, self).__init__()
         self.hparams = hparams

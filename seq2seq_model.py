@@ -8,11 +8,18 @@ from lightning_model import LightningModel
 from utils.model_util import load_model
 from dataloader import Seq2SeqChatData
 
+'''
+Description
+-----------
+Topic Detection with KoBART
+
+huggingface에 공개된 한국어 사전학습 모델 KoBART \
+    gogamza/kobart-base-v2 사용
+'''
 class Seq2SeqModel(LightningModel):
     def __init__(self, hparams):
         super(Seq2SeqModel, self).__init__(hparams)
         self.hparams = hparams
-        self.neg = -1e18
 
         self.model_type = hparams.model_type.lower()
         self.model, self.tokenizer = load_model(hparams.model_type.lower())
@@ -77,7 +84,7 @@ class Seq2SeqModel(LightningModel):
         self.train_set = Seq2SeqChatData(data_path, max_len=self.hparams.max_len, tokenizer=self.tokenizer)
         train_dataloader = DataLoader(
             self.train_set, batch_size=self.hparams.batch_size, num_workers=2,
-            shuffle=True)
+            shuffle=False)
         return train_dataloader
 
  
@@ -86,5 +93,5 @@ class Seq2SeqModel(LightningModel):
         self.valid_set = Seq2SeqChatData(data_path, max_len=self.hparams.max_len, tokenizer=self.tokenizer)
         val_dataloader = DataLoader(
             self.valid_set, batch_size=self.hparams.batch_size, num_workers=2,
-            shuffle=True)
+            shuffle=False)
         return val_dataloader
