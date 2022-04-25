@@ -6,11 +6,11 @@
 ```bash
 .
 ├── data    
-│   ├── kw_based/               키워드 기반 labeled dialogue dataset
-│   ├── regexp_based/           정규식 매칭 기반 labeled dialogue dataset
+│   ├── kw_based/               키워드 기반 labeled conversation dataset
+│   ├── regexp_based/           정규식 매칭 기반 labeled conversation dataset
 │   │   
 │   ├── DATA.md                
-│   ├── hypothesis.csv          Raw Dialogue Dataset (약 300만건의 싱글턴 대화)
+│   ├── hypothesis.csv          Raw Conversation Dataset (약 300만건의 싱글턴 대화)
 │   ├── reference.csv           웰니스 심리상담 대화 데이터 (약 1만 9천건)
 │   └── topic.csv               Topic-KW-RegExp Dataset, 19개 상담주제 클래스의 키워드/정규식
 │
